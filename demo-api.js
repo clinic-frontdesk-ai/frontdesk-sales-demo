@@ -67,7 +67,7 @@
   window.fetch = async (input,options={}) => {
     const path=typeof input==='string'?input:input.url;
     if(!new URL(path,location.origin).pathname.startsWith('/api/'))return nativeFetch(input,options);
-    try {const response=await nativeFetch(input,options);if(![404,405].includes(response.status)||response.headers.get('content-type')?.includes('application/json'))return response;} catch {}
+    try {const response=await nativeFetch(input,options);if(response.ok||response.headers.get('content-type')?.includes('application/json'))return response;} catch {}
     return mock(path,options);
   };
 })();
