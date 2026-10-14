@@ -22,6 +22,7 @@ const paths = {
   info:'M12 11v6m0-10v1M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z',
   play:'m9 5 11 7-11 7V5Z',
   mic:'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Zm-7 9v1a7 7 0 0 0 14 0v-1M12 19v3m-4 0h8',
+  phoneOff:'m3 3 18 18M8 3H4a1 1 0 0 0-1 1c0 10 7 17 17 17a1 1 0 0 0 1-1v-4l-5-2-2 2a13 13 0 0 1-6-6l2-2-2-5Z',
   people:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m18 0v-2a4 4 0 0 0-3-4M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm4-4a4 4 0 0 1 0 8',
 };
 const icon = (name, cls='') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name] || paths.info}"/></svg>`;
@@ -31,6 +32,9 @@ let booking = null;
 let toastTimer;
 let requestVersion = 0;
 let voiceRecognition = null;
+let voiceCallStartedAt = null;
+let voiceCallTimer = null;
+let voiceSpeechVersion = 0;
 const modal = $('#modal');
 
 async function api(path, options={}) {
@@ -54,7 +58,7 @@ function providerName(id) {return state.data.clinic.providers.find(x=>x.id===id)
 function badge(text,kind='') {return `<span class="badge ${kind}">${esc(text)}</span>`;}
 function empty(iconName,title,description,action='') {return `<div class="empty"><div class="empty-icon">${icon(iconName)}</div><h3>${esc(title)}</h3><p>${esc(description)}</p>${action}</div>`;}
 function notice(text) {return `<div class="notice">${icon('info')}<p>${esc(text)}</p></div>`;}
-function button(label,action,cls='',iconName='') {return `<button class="btn ${cls}" data-action="${action}">${iconName?icon(iconName):''}${esc(label)}</button>`;}
+function button(label,action,cls='',iconName='') {return `<button type="button" class="btn ${cls}" data-action="${action}">${iconName?icon(iconName):''}${esc(label)}</button>`;}
 
 async function start() {
   try {
@@ -103,8 +107,8 @@ function overviewPage() {
   const appointments=state.data.appointments.filter(x=>x.status==='confirmed');
   const upcoming=appointments.filter(x=>new Date(x.start)>new Date()).length;
   const callbacks=state.data.callbacks.filter(x=>x.status==='open').length;
-  return `${heading('Your front desk, at a glance.',`A little more time for what matters at ${c.name}.`,`${state.user.role==='owner'?button('Add clinic','add-clinic','ghost','plus'):''}${button('Try voice demo','voice-demo','primary','mic')}${button('Guided booking','book','','plus')}`)}
-    <section class="hero"><div class="hero-copy"><div class="eyebrow">${icon('sparkle')} MADE FOR YOUR PRACTICE</div><h2>A warm welcome.<br>Every single call.</h2><p>Say the service and date. The receptionist understands the request, finds an opening and saves the confirmed test appointment.</p><div class="hero-actions">${button('Talk to the receptionist','voice-demo','lime','mic')}${button('Use guided booking','book','hero-secondary','play')}</div></div><div class="hero-visual" aria-hidden="true"><div class="orbit"></div><div class="orbit two"></div><div class="orbit three"></div><div class="voice-display"><div class="voice-title"><div class="voice-icon">${icon('wave')}</div><div>Your AI receptionist<span>English · ${c.kind==='dental'?'Dental care':'Veterinary care'}</span></div></div><div class="wave">${Array.from({length:31},()=>'<i></i>').join('')}</div><div class="voice-footer"><span>Browser voice demo</span><strong>Ready to try</strong></div></div></div></section>
+  return `${heading('Your front desk, at a glance.',`A little more time for what matters at ${c.name}.`,`${state.user.role==='owner'?button('Add clinic','add-clinic','ghost','plus'):''}${button('Start demo call','voice-demo','primary','mic')}${button('Guided booking','book','','plus')}`)}
+    <section class="hero"><div class="hero-copy"><div class="eyebrow">${icon('sparkle')} MADE FOR YOUR PRACTICE</div><h2>A warm welcome.<br>Every single call.</h2><p>Say the service and date. The receptionist understands the request, finds an opening and saves the confirmed test appointment.</p><div class="hero-actions">${button('Start demo call','voice-demo','lime','mic')}${button('Use guided booking','book','hero-secondary','play')}</div></div><div class="hero-visual" aria-hidden="true"><div class="orbit"></div><div class="orbit two"></div><div class="orbit three"></div><div class="voice-display"><div class="voice-title"><div class="voice-icon">${icon('wave')}</div><div>Your AI receptionist<span>English · ${c.kind==='dental'?'Dental care':'Veterinary care'}</span></div></div><div class="wave">${Array.from({length:31},()=>'<i></i>').join('')}</div><div class="voice-footer"><span>Website demo call</span><strong>Ready to try</strong></div></div></div></section>
     <div class="stats">${[['Calls received',state.data.stats.calls,'Actual phone sessions','phone'],['Test bookings',upcoming,'Upcoming confirmed appointments','calendar'],['Callback requests',callbacks,'Open requests in your inbox','inbox'],['Call minutes',(state.data.stats.seconds/60).toFixed(1),'Recorded session duration · all time','clock']].map(([title,value,note,ic])=>`<div class="stat"><div class="stat-title">${title}${icon(ic)}</div><div class="stat-value">${value}</div><p>${note}</p></div>`).join('')}</div>
     <div class="two-col"><section class="panel"><div class="panel-head"><div><h2>The week ahead</h2><p>Your test schedule · ${esc(c.timezone)}</p></div><button class="text-button" data-page="schedule">View schedule ${icon('arrow')}</button></div>${dayStrip()}${appointmentList()}</section><section class="panel"><div class="panel-head"><h2>Meet your receptionist</h2>${badge('Demo','gray')}</div><div class="agent-card"><div class="agent-intro"><div class="agent-avatar">${icon('wave')}</div><div><h3>${esc(c.name)}</h3><p>A friendly first impression, every time.</p></div></div><div class="detail-row"><span>Phone line</span><strong>${esc(c.phone||'Not connected')}</strong></div><div class="detail-row"><span>Language</span><strong>English (US)</strong></div><div class="detail-row"><span>Scheduling</span><strong>Weekdays · ${c.open_hour}:00–${c.close_hour}:00</strong></div><div class="quote">“Thank you for calling ${esc(c.name)}. I'm your AI receptionist. How can I help?”</div>${button('Phone demo setup','phone-setup','full-width','phone')}</div></section></div>`;
 }
@@ -144,27 +148,57 @@ function settingsPage() {
 function launchPage() {
   const c=state.data.clinic;
   const checks=[...state.readiness.checks,{name:'Clinic phone number assigned',ready:!!c.phone},{name:'Human transfer number assigned',ready:!!c.transfer_phone}];
-  return `${heading('Your first call starts here.','Connect the services, then verify a real inbound demonstration call.',button('Refresh checks','refresh','','clock'))}${notice('The browser voice demo is ready now. The checklist below applies only to a real telephone connection.')}<div class="two-col"><section class="panel"><div class="readiness-head"><div class="eyebrow">TELEPHONE DEMO</div><h2 class="serif">From “hello” to a test booking.</h2><p class="small muted">Twilio → Pipecat → Deepgram + OpenAI → Test schedule</p></div><div class="panel-body">${checks.map(x=>`<div class="status-row"><div class="status-icon ${x.ready?'ready':''}">${icon(x.ready?'check':'clock')}</div><strong>${esc(x.name)}</strong>${badge(x.ready?'Configured':'Needed',x.ready?'':'amber')}</div>`).join('')}<p class="small muted section-gap">Keep API keys in the server’s private .env file. Never enter them in the clinic dashboard or send them to a caller.</p></div></section><div><section class="panel"><div class="panel-head"><h2>Twilio webhook</h2></div><div class="panel-body"><p class="small muted">In your phone number’s Voice configuration, set “A call comes in” to this URL using HTTP POST.</p><code class="code">${esc(state.readiness.webhook)}</code><p class="small muted section-gap">Set the call status callback to:</p><code class="code">${esc(state.readiness.webhook.replace('/inbound','/status'))}</code><p class="small muted section-gap">Detailed setup and a call acceptance checklist are included with the project.</p></div></section><section class="panel section-gap"><div class="panel-head"><h2>What you can show today</h2>${badge('Ready','')}</div><div class="panel-body"><p class="small muted">Browser speech recognition, date and service extraction, available times, test-calendar writes, double-booking protection and a callback inbox.</p>${button('Start browser voice demo','voice-demo','primary full-width section-gap','mic')}${button('Open guided booking','book','full-width section-gap','play')}</div></section></div></div>`;
+  return `${heading('Your first call starts here.','Connect the services, then verify a real inbound demonstration call.',button('Refresh checks','refresh','','clock'))}${notice('The website demo call is ready now. The checklist below applies only to a real telephone connection.')}<div class="two-col"><section class="panel"><div class="readiness-head"><div class="eyebrow">TELEPHONE DEMO</div><h2 class="serif">From “hello” to a test booking.</h2><p class="small muted">Twilio → Pipecat → Deepgram + OpenAI → Test schedule</p></div><div class="panel-body">${checks.map(x=>`<div class="status-row"><div class="status-icon ${x.ready?'ready':''}">${icon(x.ready?'check':'clock')}</div><strong>${esc(x.name)}</strong>${badge(x.ready?'Configured':'Needed',x.ready?'':'amber')}</div>`).join('')}<p class="small muted section-gap">Keep API keys in the server’s private .env file. Never enter them in the clinic dashboard or send them to a caller.</p></div></section><div><section class="panel"><div class="panel-head"><h2>Twilio webhook</h2></div><div class="panel-body"><p class="small muted">In your phone number’s Voice configuration, set “A call comes in” to this URL using HTTP POST.</p><code class="code">${esc(state.readiness.webhook)}</code><p class="small muted section-gap">Set the call status callback to:</p><code class="code">${esc(state.readiness.webhook.replace('/inbound','/status'))}</code><p class="small muted section-gap">Detailed setup and a call acceptance checklist are included with the project.</p></div></section><section class="panel section-gap"><div class="panel-head"><h2>What you can show today</h2>${badge('Ready','')}</div><div class="panel-body"><p class="small muted">Browser speech recognition, date and service extraction, available times, test-calendar writes, double-booking protection and a callback inbox.</p>${button('Start website demo call','voice-demo','primary full-width section-gap','mic')}${button('Open guided booking','book','full-width section-gap','play')}</div></section></div></div>`;
 }
 
 function showModal(title,body) {modal.innerHTML=`<div class="modal-head"><h2 id="modal-title">${title}</h2><button class="icon-button" data-action="close-modal" aria-label="Close dialog">${icon('close')}</button></div><div class="modal-body">${body}</div>`;if(!modal.open)modal.showModal();}
 function steps(active) {return `<div class="steps" aria-label="Step ${active} of 4">${[1,2,3,4].map(i=>`<span class="step ${i<=active?'active':''}"></span>`).join('')}</div>`;}
 
-function speakDemo(text) {
-  if(!('speechSynthesis' in window))return;
+function stopVoiceCall() {
+  if(voiceRecognition){try{voiceRecognition.abort();}catch{}voiceRecognition=null;}
+  voiceSpeechVersion++;
+  if('speechSynthesis' in window)window.speechSynthesis.cancel();
+  clearInterval(voiceCallTimer);voiceCallTimer=null;voiceCallStartedAt=null;
+}
+function voiceCallTime() {
+  if(!voiceCallStartedAt)return '00:00';
+  const seconds=Math.max(0,Math.floor((Date.now()-voiceCallStartedAt)/1000));
+  return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+}
+function updateVoiceCallTime() {
+  const target=$('#voice-call-time');if(target)target.textContent=voiceCallTime();
+}
+function startVoiceCallTimer() {
+  clearInterval(voiceCallTimer);updateVoiceCallTime();voiceCallTimer=setInterval(updateVoiceCallTime,1000);
+}
+function voiceCallFrame(content,status='Connected') {
+  return `<div class="voice-call" aria-label="Browser demo call"><div class="voice-call-head"><div class="voice-call-identity"><span class="voice-call-avatar">${icon('wave')}</span><span><strong>${esc(state.data.clinic.name)}</strong><small>AI receptionist · English (US)</small></span></div><div class="voice-call-meta"><span class="voice-call-live"><i></i>${esc(status)}</span><time id="voice-call-time" aria-label="Call duration">${voiceCallTime()}</time></div></div><div class="voice-call-stage">${content}</div><div class="voice-call-disclosure">${icon('shield')} Browser voice simulation · fictional test data only</div></div>`;
+}
+function speakDemo(text,onEnd) {
+  if(!('speechSynthesis' in window)){if(onEnd)onEnd();return false;}
+  const version=++voiceSpeechVersion;
   window.speechSynthesis.cancel();
   const utterance=new SpeechSynthesisUtterance(text);
   utterance.lang='en-US';utterance.rate=.98;utterance.pitch=1;
+  let finished=false;
+  const finish=()=>{if(finished||version!==voiceSpeechVersion)return;finished=true;if(onEnd)onEnd();};
+  utterance.onend=finish;utterance.onerror=finish;
+  setTimeout(finish,Math.min(8000,2000+text.length*45));
   window.speechSynthesis.speak(utterance);
+  return true;
 }
 function voiceDemoForm(value='') {
-  return `<form id="voice-intent-form" class="voice-type-form"><label class="field">Or type the request<input name="request" value="${esc(value)}" autocomplete="off" required placeholder="Cleaning next Tuesday afternoon"></label><button class="btn" type="submit">Find times ${icon('arrow')}</button></form>`;
+  return `<form id="voice-intent-form" class="voice-type-form"><label class="field">Or type what you would say<input name="request" value="${esc(value)}" autocomplete="off" required placeholder="Cleaning next Tuesday afternoon"></label><button class="btn" type="submit">Send ${icon('arrow')}</button></form>`;
 }
 function beginVoiceDemo() {
-  if(voiceRecognition){try{voiceRecognition.abort();}catch{}voiceRecognition=null;}
+  stopVoiceCall();
   booking={clinicId:state.clinicId,key:crypto.randomUUID(),step:1,details:{},voiceDemo:true};
   const example=state.data.clinic.kind==='dental'?'I need a cleaning next Tuesday afternoon.':'I need a vaccination visit tomorrow morning.';
-  showModal('Talk to your AI receptionist',`<div class="voice-demo"><div class="voice-demo-orb">${icon('mic')}</div><div class="step-label">Free browser voice demo</div><h3>What would you like to book, and when?</h3><p>Try: “${esc(example)}”</p><div id="voice-status" class="voice-status" role="status" aria-live="polite">Ready when you are.</div>${button('Start listening','voice-listen','primary voice-listen','mic')}${voiceDemoForm()}<p class="voice-privacy">Your browser may send microphone audio to its speech provider. Frontdesk does not store this recording. This demo creates fictional test appointments only.</p></div>`);
+  voiceCallStartedAt=Date.now();
+  const body=`<div class="voice-demo"><div class="voice-demo-orb speaking">${icon('wave')}</div><div class="step-label">Connected browser call</div><h3>How can I help today?</h3><p class="voice-call-prompt">Try: “${esc(example)}”</p><div id="voice-status" class="voice-status speaking" role="status" aria-live="polite">The receptionist is greeting you…</div><div class="voice-call-controls">${button('Start talking','voice-listen','primary voice-listen','mic')}${button('End call','end-voice-call','call-end','phoneOff')}</div>${voiceDemoForm()}<p class="voice-privacy">Your browser may send microphone audio to its speech provider. Frontdesk does not store this recording.</p></div>`;
+  showModal('Demo call',voiceCallFrame(body));startVoiceCallTimer();
+  const greeting=`Thank you for calling ${state.data.clinic.name}. I'm your AI receptionist. How can I help today?`;
+  speakDemo(greeting,()=>{voiceStatus('Your turn. Tap Start talking and say the service and date.','ready');const orb=$('.voice-demo-orb');if(orb)orb.classList.remove('speaking');});
 }
 function voiceStatus(message,kind='') {
   const target=$('#voice-status');
@@ -173,17 +207,20 @@ function voiceStatus(message,kind='') {
 function startVoiceListening(buttonElement) {
   const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!Recognition){voiceStatus('Voice recognition is unavailable in this browser. Type the request below instead.','error');return;}
+  voiceSpeechVersion++;
+  if('speechSynthesis' in window)window.speechSynthesis.cancel();
   if(voiceRecognition){try{voiceRecognition.abort();}catch{}}
   const recognition=new Recognition();voiceRecognition=recognition;
   recognition.lang='en-US';recognition.interimResults=false;recognition.maxAlternatives=1;
   buttonElement.disabled=true;buttonElement.classList.add('listening');
   voiceStatus('Listening… say the service and date.','listening');
+  const orb=$('.voice-demo-orb');if(orb)orb.classList.add('listening');
   recognition.onresult=event=>handleVoiceIntent(event.results[0][0].transcript);
   recognition.onerror=event=>{
     const denied=['not-allowed','service-not-allowed'].includes(event.error);
     voiceStatus(denied?'Microphone access was not available. Type the request below.':'I could not hear that clearly. Try again or type the request.','error');
   };
-  recognition.onend=()=>{voiceRecognition=null;const button=$('[data-action="voice-listen"]');if(button){button.disabled=false;button.classList.remove('listening');}};
+  recognition.onend=()=>{voiceRecognition=null;const button=$('[data-action="voice-listen"]');if(button){button.disabled=false;button.classList.remove('listening');}const orb=$('.voice-demo-orb');if(orb)orb.classList.remove('listening');};
   try{recognition.start();}catch{voiceStatus('The microphone is already in use. Try typing the request.','error');}
 }
 function formatRequestedDay(day) {
@@ -203,17 +240,17 @@ async function handleVoiceIntent(transcript) {
     speakDemo(`Please include the ${missing}.`);return;
   }
   booking.serviceId=intent.serviceId;booking.voiceIntent=intent;
-  showModal('Finding a good time',`<div class="voice-demo voice-working"><div class="voice-demo-orb listening">${icon('wave')}</div><div class="step-label">Request understood</div><h3>${esc(serviceName(intent.serviceId))}</h3><p>${esc(formatRequestedDay(intent.day))}${intent.timeOfDay?` · ${esc(intent.timeOfDay)}`:''}</p><div class="voice-transcript">“${esc(intent.transcript)}”</div><div class="voice-status listening" role="status">Checking the test schedule…</div></div>`);
+  showModal('Demo call',voiceCallFrame(`<div class="voice-demo voice-working"><div class="voice-demo-orb listening">${icon('wave')}</div><div class="step-label">Request understood</div><h3>${esc(serviceName(intent.serviceId))}</h3><p>${esc(formatRequestedDay(intent.day))}${intent.timeOfDay?` · ${esc(intent.timeOfDay)}`:''}</p><div class="voice-transcript"><span>You said</span>“${esc(intent.transcript)}”</div><div class="voice-status listening" role="status" aria-live="polite">Checking the test schedule…</div></div>`,'Checking schedule'));
   try{
     let slots=await api(`/clinics/${booking.clinicId}/slots?service_id=${encodeURIComponent(intent.serviceId)}&day=${encodeURIComponent(intent.day)}`);
     slots=slots.filter(slot=>localDay(slot.start)===intent.day);
     if(intent.timeOfDay){const ranges={morning:[0,12],afternoon:[12,17],evening:[17,24]},[start,end]=ranges[intent.timeOfDay];const preferred=slots.filter(slot=>{const hour=slotHourInClinic(slot);return hour>=start&&hour<end;});if(preferred.length)slots=preferred;}
     booking.slots=slots;
     if(!slots.length){
-      showModal('No matching openings',`<div class="voice-demo"><div class="voice-demo-orb">${icon('calendar')}</div><h3>No test times were found.</h3><p>Try another date or use the guided calendar.</p>${voiceDemoForm(transcript)}<div class="form-actions">${button('Open guided booking','book','primary')}</div></div>`);return;
+      showModal('Demo call',voiceCallFrame(`<div class="voice-demo"><div class="voice-demo-orb">${icon('calendar')}</div><h3>No test times were found.</h3><p>Try another date or use the guided calendar.</p>${voiceDemoForm(transcript)}<div class="voice-call-controls">${button('Open guided booking','book','primary')}${button('End call','end-voice-call','call-end','phoneOff')}</div></div>`));return;
     }
     const shown=slots.slice(0,6);
-    showModal('Choose a test time',`<div class="voice-result"><div class="voice-understood"><div><span>${icon('check')} Visit</span><strong>${esc(serviceName(intent.serviceId))}</strong></div><div><span>Date requested</span><strong>${esc(formatRequestedDay(intent.day))}${intent.timeOfDay?` · ${esc(intent.timeOfDay)}`:''}</strong></div></div><p class="voice-reply">“I found ${shown.length===1?'a time':'a few times'} that could work. Which do you prefer?”</p><div class="slots">${shown.map(slot=>{const index=booking.slots.indexOf(slot);return `<button class="slot" data-slot="${index}">${esc(slot.label)}<small>${esc(slot.provider_name)}</small></button>`;}).join('')}</div><div class="form-actions">${button('Say a different request','voice-demo','ghost')}</div></div>`);
+    showModal('Demo call',voiceCallFrame(`<div class="voice-result"><div class="voice-understood"><div><span>${icon('check')} Visit</span><strong>${esc(serviceName(intent.serviceId))}</strong></div><div><span>Date requested</span><strong>${esc(formatRequestedDay(intent.day))}${intent.timeOfDay?` · ${esc(intent.timeOfDay)}`:''}</strong></div></div><p class="voice-reply">“I found ${shown.length===1?'a time':'a few times'} that could work. Which do you prefer?”</p><div class="slots">${shown.map(slot=>{const index=booking.slots.indexOf(slot);return `<button class="slot" data-slot="${index}">${esc(slot.label)}<small>${esc(slot.provider_name)}</small></button>`;}).join('')}</div><div class="voice-call-controls">${button('Say a different request','voice-demo','ghost')}${button('End call','end-voice-call','call-end','phoneOff')}</div></div>`,'Receptionist speaking'));
     speakDemo(`I found ${shown.length===1?'a time':'a few times'} that could work. Which do you prefer?`);
   }catch(err){showModal('Could not load times',`<p>${esc(err.message)}</p>${button('Try again','voice-demo','primary')}`);}
 }
@@ -269,7 +306,7 @@ document.addEventListener('click',async event=>{
     if(el.dataset.page){state.page=el.dataset.page;render();return;}
     if(el.dataset.day){state.selectedDay=el.dataset.day;render();return;}
     if(el.dataset.service){await bookingSlots(el.dataset.service);return;}
-    if(el.dataset.slot!==undefined){bookingDetails(Number(el.dataset.slot));return;}
+    if(el.dataset.slot!==undefined){stopVoiceCall();bookingDetails(Number(el.dataset.slot));return;}
     if(el.dataset.cancel){const id=el.dataset.cancel;showModal('Cancel this test booking?',`<p>This releases the time in your test schedule. It does not affect any real clinic appointment.</p><div class="form-actions">${button('Keep appointment','close-modal')}<button class="btn danger" data-confirm-cancel="${esc(id)}">Cancel test booking</button></div>`);return;}
     if(el.dataset.confirmCancel){el.disabled=true;await api(`/clinics/${state.clinicId}/appointments/${el.dataset.confirmCancel}/cancel`,{method:'POST'});modal.close();await loadClinic();toast('Test booking cancelled. The time is available again.');return;}
     if(el.dataset.resolve){el.disabled=true;await api(`/clinics/${state.clinicId}/callbacks/${el.dataset.resolve}/resolve`,{method:'POST'});await loadClinic();toast('Callback marked resolved.');return;}
@@ -277,10 +314,11 @@ document.addEventListener('click',async event=>{
       case 'reload': await start();break;
       case 'local-login': el.disabled=true;await api('/local-demo-login',{method:'POST'});await start();break;
       case 'logout': await api('/logout',{method:'POST'});state.user=null;await start();break;
-      case 'book': if(voiceRecognition){voiceRecognition.abort();voiceRecognition=null;}beginBooking();break;
+      case 'book': stopVoiceCall();beginBooking();break;
       case 'voice-demo': beginVoiceDemo();break;
       case 'voice-listen': startVoiceListening(el);break;
-      case 'close-modal': if(voiceRecognition){voiceRecognition.abort();voiceRecognition=null;}if('speechSynthesis' in window)window.speechSynthesis.cancel();modal.close();break;
+      case 'end-voice-call': stopVoiceCall();modal.close();toast('Demo call ended. No recording was saved.');break;
+      case 'close-modal': stopVoiceCall();modal.close();break;
       case 'phone-setup': state.page='launch';render();break;
       case 'refresh': el.disabled=true;await loadClinic();toast('Workspace updated.');break;
       case 'add-clinic':addClinic();break;
@@ -330,5 +368,6 @@ document.addEventListener('submit',async event=>{
   }catch(err){if(error)error.textContent=err.message;else toast(err.message);}
   finally{if(submit)submit.disabled=false;}
 });
-modal.addEventListener('click',event=>{if(event.target===modal){const r=modal.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom){if(voiceRecognition){voiceRecognition.abort();voiceRecognition=null;}if('speechSynthesis' in window)window.speechSynthesis.cancel();modal.close();}}});
+modal.addEventListener('click',event=>{if(event.target===modal){const r=modal.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom){stopVoiceCall();modal.close();}}});
+modal.addEventListener('close',stopVoiceCall);
 start();
