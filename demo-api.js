@@ -3,7 +3,7 @@
 // whenever it is present; static hosting falls back to data stored in this browser.
 (() => {
   const nativeFetch = window.fetch.bind(window);
-  const key = 'frontdesk-public-demo-v1';
+  const key = 'frontdesk-public-dental-demo-v2';
   const now = () => new Date().toISOString();
   const services = kind => kind === 'dental' ? [
     {id:'new-patient',name:'New patient exam',minutes:60,price:'$149 demo estimate'},
@@ -19,7 +19,7 @@
   ] : [{id:'rivera',name:'Dr. Alex Rivera'},{id:'patel',name:'Dr. Sam Patel'}];
   const clinic = (id,name,kind,timezone,address) => ({id,name,kind,timezone,address,phone:'',transfer_phone:'',open_hour:9,close_hour:17,services:services(kind),providers:providers(kind),created_at:now()});
   const initial = () => ({
-    clinics:[clinic('pearl-dental','Pearl Dental Studio','dental','America/New_York','Sample dental practice · New York'),clinic('willow-vet','Willow Veterinary Care','veterinary','America/Chicago','Sample veterinary practice · Austin')],
+    clinics:[clinic('pearl-dental','Pearl Dental Studio','dental','America/New_York','Sample dental practice · New York')],
     appointments:[],callbacks:[],calls:[]
   });
   const read = () => { try { return JSON.parse(localStorage.getItem(key)) || initial(); } catch { return initial(); } };
